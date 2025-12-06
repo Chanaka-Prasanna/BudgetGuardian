@@ -4,6 +4,7 @@ from typing import Annotated, Literal
 from langchain_core.tools import tool
 from langchain_core.messages import ToolMessage
 from langgraph.prebuilt import InjectedState
+from langchain_core.tools import InjectedToolCallId
 from langgraph.types import Command
 
 import os
@@ -27,7 +28,8 @@ def book_hotel(
     hotel_name: str, 
     nightly_rate: float, 
     nights: int,
-    state: Annotated[dict, InjectedState] # <--- Magic: Access real ledger
+    state: Annotated[dict, InjectedState], # <--- Magic: Access real ledger
+    tool_call_id: Annotated[str, InjectedToolCallId] # <--- Get the actual tool call ID
 ) -> Command:
     """
     Book a hotel. verification of funds happens BEFORE booking.
@@ -54,7 +56,7 @@ def book_hotel(
                 "messages": [
                     ToolMessage(
                         content=f"Error: Transaction Declined. Cost ${total_cost} exceeds remaining budget of ${current_balance}. Please find a cheaper option.",
-                        tool_call_id=uuid.uuid4().hex # In real app, get this from InjectedToolCallId
+                        tool_call_id=tool_call_id # Use the actual tool call ID
                     )
                 ]
             }
@@ -83,7 +85,7 @@ def book_hotel(
             "messages": [
                 ToolMessage(
                     content=f"Successfully booked {hotel_name} for {nights} nights. Total: ${total_cost}. Remaining Budget: ${new_balance}",
-                    tool_call_id=uuid.uuid4().hex
+                    tool_call_id=tool_call_id # Use the actual tool call ID
                 )
             ]
         }

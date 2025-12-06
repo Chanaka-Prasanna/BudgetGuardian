@@ -1,18 +1,22 @@
-from langgraph.prebuilt import create_react_agent
+from langchain.agents import create_agent
 from langchain_google_genai import ChatGoogleGenerativeAI
 from state import TravelState
 from tools import book_hotel, search_hotels
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # 1. Setup the Brain (Gemini Flash is fast & cheap)
 # Ensure GOOGLE_API_KEY is set in env for Gemini
-model = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0)
+model = ChatGoogleGenerativeAI(model="gemini-2.0-flash", temperature=0)
 
 # 2. Define the Toolkit
 tools = [search_hotels, book_hotel]
 
 # 3. Create the Graph
 # We pass our custom TravelState schema here
-app = create_react_agent(model, tools, state_schema=TravelState)
+app = create_agent(model, tools, state_schema=TravelState)
 
 # --- HOW TO RUN IT ---
 if __name__ == "__main__":
