@@ -148,3 +148,89 @@ def search_hotels(location: str, budget_tier: str = "moderate") -> str:
 
     # 4. Return formatted text for the LLM to read
     return "\n".join(results)
+
+@tool
+def search_flights(origin: str, destination: str) -> str:
+    """
+    Search for flights between two cities.
+    Returns a list of options with airlines, times, and costs.
+    
+    Args:
+        origin: City or airport code (e.g., "NYC", "New York").
+        destination: City or airport code (e.g., "LHR", "London").
+    """
+    # Mock Data for Prototype
+    # In a real app, this would call Amadeus or SkyScanner API
+    
+    import random
+    
+    airlines = ["Delta", "United", "British Airways", "JAL", "Emirates"]
+    results = []
+    
+    base_price = 400 if origin != destination else 0
+    
+    for i in range(3):
+        airline = random.choice(airlines)
+        price = base_price + random.randint(50, 500)
+        flight_num = f"{airline[:2].upper()}{random.randint(100, 999)}"
+        
+        results.append(
+            f"- Flight: {flight_num} ({airline})\n  Route: {origin} -> {destination}\n  Price: ${price}\n  Time: {random.randint(6, 20)}:00"
+        )
+        
+    return "\n".join(results)
+
+@tool
+def book_flight(
+    flight_number: str, 
+    price: float, 
+    state: Annotated[dict, InjectedState],
+    tool_call_id: Annotated[str, InjectedToolCallId]
+) -> Command:
+    """
+    Book a flight. Verification of funds happens BEFORE booking.
+    
+    Args:
+        flight_number: The flight number to book (e.g., "DL123").
+        price: The cost of the flight.
+    """
+    
+    # 1. READ THE LEDGER
+    current_balance = state.get("remaining_budget", 0)
+    
+    # 2. ENFORCE CONSTRAINTS
+    if price > current_balance:
+        return Command(
+            update={
+                "messages": [
+                    ToolMessage(
+                        content=f"Error: Transaction Declined. Cost ${price} exceeds remaining budget of ${current_balance}.",
+                        tool_call_id=tool_call_id
+                    )
+                ]
+            }
+        )
+
+    # 3. EXECUTE TRANSACTION
+    new_balance = current_balance - price
+    
+    print(f"✈️ FLIGHT BOOKED: {flight_number} for ${price}. New Balance: ${new_balance}")
+
+    # 4. COMMIT TO STATE
+    return Command(
+        update={
+            "remaining_budget": new_balance,
+            "itinerary": [{
+                "name": f"Flight {flight_number}",
+                "cost": price,
+                "type": "flight",
+                "status": "confirmed"
+            }],
+            "messages": [
+                ToolMessage(
+                    content=f"Successfully booked Flight {flight_number}. Cost: ${price}. Remaining Budget: ${new_balance}",
+                    tool_call_id=tool_call_id
+                )
+            ]
+        }
+    )

@@ -41,3 +41,6 @@ class TravelState(TypedDict):
     
     # Track the current location for finding nearby places
     current_location: str
+    
+    # Supervisor routing
+    next: str

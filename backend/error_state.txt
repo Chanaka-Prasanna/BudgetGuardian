@@ -1,0 +1,17 @@
+Traceback (most recent call last):
+  File "D:\AI Projects\BudgetGuardian\backend\agent\main.py", line 2, in <module>
+    from graph import app
+  File "D:\AI Projects\BudgetGuardian\backend\agent\graph.py", line 3, in <module>
+    from agents import hotel_node, flight_node, supervisor_node
+  File "D:\AI Projects\BudgetGuardian\backend\agent\agents.py", line 20, in <module>
+    hotel_agent = create_agent(
+                  ^^^^^^^^^^^^^
+  File "D:\AI Projects\BudgetGuardian\backend\agent\agents.py", line 15, in create_agent
+    return create_react_agent(llm, tools, state_modifier=system_prompt)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\AI Projects\BudgetGuardian\backend\venv\Lib\site-packages\typing_extensions.py", line 3004, in wrapper
+    return arg(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^
+  File "D:\AI Projects\BudgetGuardian\backend\venv\Lib\site-packages\langgraph\prebuilt\chat_agent_executor.py", line 518, in create_react_agent
+    raise TypeError(
+TypeError: create_react_agent() got unexpected keyword arguments: {'state_modifier': "You are a Hotel Scout.\n    Your job is to find and book hotels based on the user's needs and budget.\n    Always check the remaining budget before booking.\n    Use the 'search_hotels' tool to find options.\n    Use the 'book_hotel' tool to finalize a booking.\n    "}
