@@ -1,121 +1,353 @@
 "use client";
 import React, { useState } from "react";
+import ReactMarkdown from "react-markdown";
 import { useTripStream } from "@/hooks/useTripStream";
-import { BudgetGauge } from "@/components/BudgetGauge";
-import { Terminal } from "@/components/Terminal";
+import { MapComponent } from "@/components/MapComponent";
 
 export default function Dashboard() {
   const {
     startStream,
+    resumeStream,
     messages,
     remainingBudget,
     totalBudget,
     itinerary,
     isLoading,
+    foundPlaces,
+    researchedPlaces,
+    workflowStage,
+    isPaused,
   } = useTripStream();
 
-  const [input, setInput] = useState("Plan a 3-day luxury trip to Paris");
-  const [budget, setBudget] = useState(3000);
-  const [location, setLocation] = useState("Paris");
+  const [location, setLocation] = useState("");
+  const [budget, setBudget] = useState(5000);
+  const [description, setDescription] = useState("");
+
+  // HITL State - text-based selection
+  const [selectedPlaceInput, setSelectedPlaceInput] = useState("");
+  
+  // Track if trip has started to hide input controls
+  const [tripStarted, setTripStarted] = useState(false);
+
+  const handleStart = () => {
+    if (!location || !budget) {
+      alert("Please enter location and budget");
+      return;
+    }
+    const query = description || `Find interesting places in ${location}`;
+    startStream(query, budget, location, description);
+    setTripStarted(true);
+  };
+
+  const handleNewTrip = () => {
+    setTripStarted(false);
+    setLocation("");
+    setBudget(5000);
+    setDescription("");
+    setSelectedPlaceInput("");
+  };
+
+  const handleSelectPlaces = () => {
+    if (!selectedPlaceInput.trim()) {
+      alert("Please enter place numbers (comma-separated)");
+      return;
+    }
+
+    // Parse user input - convert numbers to place IDs
+    const inputs = selectedPlaceInput
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+
+    const placeIds: string[] = [];
+
+    inputs.forEach((input) => {
+      // Check if it's a number (index)
+      const num = parseInt(input);
+      if (!isNaN(num) && num > 0 && num <= (foundPlaces?.length || 0)) {
+        // Convert 1-based index to 0-based and get place ID
+        const place = foundPlaces[num - 1];
+        if (place) placeIds.push(place.id);
+      } else {
+        // Try to find by name
+        const place = foundPlaces?.find((p) =>
+          p.name.toLowerCase().includes(input.toLowerCase())
+        );
+        if (place) placeIds.push(place.id);
+      }
+    });
+
+    if (placeIds.length === 0) {
+      alert("No valid places found. Please check the numbers.");
+      return;
+    }
+
+    resumeStream(placeIds, "research");
+    setSelectedPlaceInput("");
+  };
+
+  const handleChooseLocations = () => {
+    if (!selectedPlaceInput.trim()) {
+      alert("Please enter a location number for your itinerary");
+      return;
+    }
+
+    // Parse user input - accept only ONE location number
+    const input = selectedPlaceInput.trim();
+    const num = parseInt(input);
+    
+    if (isNaN(num) || num < 1 || num > researchedPlaces.length) {
+      alert(`Please enter a valid location number between 1 and ${researchedPlaces.length}`);
+      return;
+    }
+
+    // Get the single selected place
+    const place = researchedPlaces[num - 1];
+    if (!place) {
+      alert("Location not found. Please check the number.");
+      return;
+    }
+
+    // Send only ONE place ID for itinerary
+    resumeStream([place.id], "plan_itinerary");
+    setSelectedPlaceInput("");
+  };
 
   return (
-    <div className="min-h-screen bg-gray-50 p-8 font-sans">
-      <header className="max-w-6xl mx-auto mb-8">
-        <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+    <div className="h-screen bg-gray-50 flex flex-col font-sans overflow-hidden">
+      {/* HEADER */}
+      <header className="bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center shrink-0">
+        <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
           🛡️ BudgetGuardian{" "}
           <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
-            PROTOTYPE
+            AI Travel Planner
           </span>
         </h1>
+        <div className="flex items-center gap-4">
+          <div className="text-sm text-gray-700">
+            <span className="text-xs text-gray-500">Stage: </span>
+            <span className="font-semibold text-blue-600">
+              {workflowStage || "Ready"}
+            </span>
+          </div>
+        </div>
       </header>
 
-      <main className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* LEFT COL: Controls & Terminal */}
-        <div className="lg:col-span-2 space-y-6">
-          <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Current Location
-                </label>
+      {/* MAIN CONTENT - SPLIT VIEW */}
+      <main className="flex-1 flex overflow-hidden">
+        {/* LEFT PANEL: AGENT & CONTROLS (40%) */}
+        <div className="w-[40%] flex flex-col border-r border-gray-200 bg-white relative">
+          {/* CONTROLS - Hide after trip starts */}
+          {!tripStarted ? (
+            <div className="p-6 border-b border-gray-100 space-y-4">
+              <div className="space-y-3">
                 <input
                   value={location}
                   onChange={(e) => setLocation(e.target.value)}
-                  className="w-full p-3 border border-gray-300 rounded-lg bg-gray-50 focus:ring-2 focus:ring-blue-500 outline-none transition"
-                  placeholder="e.g. New York"
+                  className="w-full p-3 border border-gray-300 rounded-lg bg-white text-gray-900 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent placeholder:text-gray-400"
+                  placeholder="📍 Enter location (e.g., Paris, Tokyo)"
                 />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Total Budget ($)
-                </label>
                 <input
                   type="number"
                   value={budget}
                   onChange={(e) => setBudget(Number(e.target.value))}
-                  className="w-full p-3 border border-gray-300 rounded-lg bg-gray-50 focus:ring-2 focus:ring-blue-500 outline-none transition"
-                  placeholder="e.g. 3000"
+                  className="w-full p-3 border border-gray-300 rounded-lg bg-white text-gray-900 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent placeholder:text-gray-400"
+                  placeholder="💰 Enter budget (USD)"
+                />
+                <textarea
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  className="w-full p-3 border border-gray-300 rounded-lg bg-white text-gray-900 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none placeholder:text-gray-400"
+                  placeholder="✨ Describe what you're looking for (hotels, temples, restaurants, etc.)"
+                  rows={3}
                 />
               </div>
-            </div>
-            <div className="flex gap-4">
-              <input
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                className="flex-1 p-3 border border-gray-300 rounded-lg bg-gray-50 focus:ring-2 focus:ring-blue-500 outline-none transition"
-                placeholder="Where do you want to go?"
-              />
               <button
-                onClick={() => startStream(input, budget, location)}
-                disabled={isLoading}
-                className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-medium disabled:opacity-50 transition-colors"
+                onClick={handleStart}
+                disabled={isLoading || !location}
+                className="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white px-6 py-3 rounded-lg text-sm font-bold hover:from-blue-700 hover:to-purple-700 disabled:opacity-50 disabled:cursor-not-allowed shadow-md transition-all"
               >
-                {isLoading ? "Thinking..." : "Launch Agent"}
+                {isLoading ? "🔍 Searching..." : "🚀 Start Planning"}
               </button>
             </div>
-          </div>
+          ) : (
+            <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-gradient-to-r from-blue-50 to-purple-50">
+              <div className="text-sm">
+                <div className="font-semibold text-gray-800">
+                  📍 {location}
+                </div>
+              </div>
+              <button
+                onClick={handleNewTrip}
+                className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-xs font-medium text-gray-700 hover:bg-gray-50 transition-colors shadow-sm"
+              >
+                🔄 New Trip
+              </button>
+            </div>
+          )}
 
-          <Terminal logs={messages} />
-        </div>
-
-        {/* RIGHT COL: State Visualization */}
-        <div className="space-y-6">
-          <BudgetGauge
-            total={totalBudget || budget}
-            remaining={totalBudget ? remainingBudget : budget}
-          />
-
-          <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm min-h-[300px]">
-            <h3 className="text-gray-500 text-sm font-medium uppercase mb-4">
-              Confirmed Itinerary
-            </h3>
-            {itinerary.length === 0 ? (
-              <div className="text-center text-gray-400 py-10 text-sm">
-                No bookings confirmed yet.
-                <br />
-                Waiting for agent transactions...
+          {/* CHAT / MESSAGES */}
+          <div className="flex-1 overflow-y-auto p-4 bg-gray-50 pb-[22rem]">
+            {messages.length === 0 && isLoading ? (
+              <div className="flex items-center justify-center h-full">
+                <div className="text-center">
+                  <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-blue-500 border-t-transparent"></div>
+                  <p className="mt-4 text-gray-600 text-sm font-medium">Searching for places...</p>
+                </div>
+              </div>
+            ) : messages.length === 0 ? (
+              <div className="flex items-center justify-center h-full text-gray-400 text-sm">
+                <div className="text-center">
+                  <div className="text-4xl mb-2">💬</div>
+                  <p>Enter your trip details above to get started</p>
+                </div>
               </div>
             ) : (
-              <ul className="space-y-3">
-                {itinerary.map((item, i) => (
-                  <li
+              <div className="space-y-3">
+                {messages.map((msg, i) => (
+                  <div
                     key={i}
-                    className="flex justify-between items-center p-3 bg-gray-50 rounded-lg border border-gray-100"
+                    className={`p-3 rounded-lg ${
+                      msg.role === "human"
+                        ? "bg-blue-100 ml-8"
+                        : msg.role === "error"
+                        ? "bg-red-100"
+                        : "bg-white shadow-sm"
+                    }`}
                   >
-                    <div>
-                      <div className="font-medium text-gray-900">
-                        {item.name}
-                      </div>
-                      <div className="text-xs text-gray-500 capitalize">
-                        {item.type}
-                      </div>
+                    <div className="text-xs text-gray-500 mb-1 font-semibold">
+                      {msg.role === "human"
+                        ? "You"
+                        : msg.role === "error"
+                        ? "Error"
+                        : "Assistant"}
                     </div>
-                    <div className="font-mono text-red-600 font-medium">
-                      -${item.cost}
+                    <div className="prose-content text-sm text-gray-900">
+                      <ReactMarkdown>{msg.content}</ReactMarkdown>
                     </div>
-                  </li>
+                  </div>
                 ))}
-              </ul>
+                {isLoading && (
+                  <div className="flex items-center gap-2 text-gray-500 text-sm p-3">
+                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-blue-500 border-t-transparent"></div>
+                    <span>Processing...</span>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* ACTION BAR (HITL) - Fixed Position */}
+          {workflowStage === "select_locations" && isPaused && (
+            <div className="absolute bottom-0 left-0 right-0 p-3 bg-blue-50 border-t border-blue-100 space-y-2 shadow-lg max-h-80 overflow-y-auto">
+              <div className="text-sm text-blue-900 font-medium">
+                ✅ Found {foundPlaces?.length || 0} places
+              </div>
+
+              {/* Places List */}
+              {foundPlaces && foundPlaces.length > 0 && (
+                <div className="max-h-40 overflow-y-auto bg-white rounded p-2 text-xs border border-blue-200">
+                  {foundPlaces.map((place, idx) => (
+                    <div key={place.id} className="py-1 flex gap-2">
+                      <span className="font-bold text-blue-600">
+                        {idx + 1}.
+                      </span>
+                      <span className="text-gray-700">{place.name}</span>
+                      <span className="text-gray-400 text-xs">
+                        ({place.type})
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className="text-xs text-blue-700">
+                Enter place numbers to research (comma-separated):
+              </div>
+              <input
+                type="text"
+                value={selectedPlaceInput}
+                onChange={(e) => setSelectedPlaceInput(e.target.value)}
+                className="w-full p-2 border border-blue-200 rounded-lg bg-white text-gray-900 text-sm placeholder:text-gray-400"
+                placeholder="e.g., 1, 3, 5, 7"
+                onKeyPress={(e) => e.key === "Enter" && handleSelectPlaces()}
+              />
+              <button
+                className="w-full bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-sm hover:bg-blue-700 transition-colors disabled:opacity-50"
+                onClick={handleSelectPlaces}
+                disabled={isLoading}
+              >
+                {isLoading ? "Processing..." : "Research Selected Places →"}
+              </button>
+            </div>
+          )}
+
+          {workflowStage === "choose_locations" &&
+            isPaused &&
+            researchedPlaces.length > 0 && (
+              <div className="absolute bottom-0 left-0 right-0 p-3 bg-green-50 border-t border-green-100 space-y-2 shadow-lg max-h-80 overflow-y-auto">
+                <div className="text-sm text-green-900 font-medium">
+                  ✅ Research completed for {researchedPlaces.length} places
+                </div>
+
+                {/* Researched Places List */}
+                <div className="max-h-40 overflow-y-auto bg-white rounded p-2 text-xs border border-green-200">
+                  {researchedPlaces.map((place, idx) => (
+                    <div key={place.id} className="py-1 flex gap-2">
+                      <span className="font-bold text-green-600">
+                        {idx + 1}.
+                      </span>
+                      <span className="text-gray-700">{place.name}</span>
+                      <span className="text-gray-400 text-xs">
+                        ({place.type})
+                      </span>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="text-xs text-green-700">
+                  Select ONE location number for your itinerary:
+                </div>
+                <input
+                  type="text"
+                  value={selectedPlaceInput}
+                  onChange={(e) => setSelectedPlaceInput(e.target.value)}
+                  className="w-full p-2 border border-green-200 rounded-lg bg-white text-gray-900 text-sm placeholder:text-gray-400"
+                  placeholder="e.g., 1"
+                  onKeyPress={(e) =>
+                    e.key === "Enter" && handleChooseLocations()
+                  }
+                />
+                <button
+                  className="w-full bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-sm hover:bg-green-700 transition-colors disabled:opacity-50"
+                  onClick={handleChooseLocations}
+                  disabled={isLoading}
+                >
+                  {isLoading ? "Planning..." : "Create Itinerary →"}
+                </button>
+              </div>
+            )}
+        </div>
+
+        {/* RIGHT PANEL: Map View (60%) */}
+        <div className="flex-1 bg-gray-100 relative flex flex-col">
+          {/* Map Content */}
+          <div className="flex-1 relative overflow-hidden">
+            <MapComponent places={foundPlaces || []} />
+            {/* Floating Itinerary Overlay */}
+            {itinerary.length > 0 && (
+              <div className="absolute top-4 right-4 w-80 bg-white/90 backdrop-blur shadow-xl rounded-xl p-4 border border-gray-200 z-10">
+                <h3 className="font-bold text-gray-800 mb-2">
+                  Current Itinerary
+                </h3>
+                <ul className="space-y-2 text-sm">
+                  {itinerary.map((item, i) => (
+                    <li key={i} className="text-gray-700">
+                      • {item.name}
+                    </li>
+                  ))}
+                </ul>
+              </div>
             )}
           </div>
         </div>
