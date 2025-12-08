@@ -86,7 +86,30 @@ Keep your communication friendly and helpful. Focus on presenting the research f
 
 def research_node(state: TravelState) -> dict:
     """Entry point for the Research Agent. Performs parallel research on selected places."""
-    result = research_agent.invoke(state)
+    # Get selected place IDs from state
+    selected_places = state.get("selected_places", [])
+    found_places = state.get("found_places", [])
+    
+    # Build a mapping of IDs to names for better context
+    place_details = []
+    for place_id in selected_places:
+        place = next((p for p in found_places if p.get("id") == place_id), None)
+        if place:
+            place_details.append(f"- {place_id}: {place.get('name', 'Unknown')}")
+    
+    # Create an explicit message with the place IDs to research
+    research_instruction = (
+        f"I have selected {len(selected_places)} places for you to research. "
+        f"Here are the place IDs you need to research:\n"
+        + "\n".join(place_details) +
+        "\n\nPlease call the research_place tool for EACH of these place IDs and provide a comprehensive summary."
+    )
+    
+    # Add this as a human message to explicitly tell the agent what to do
+    state_with_instruction = dict(state)
+    state_with_instruction["messages"] = state["messages"] + [HumanMessage(content=research_instruction)]
+    
+    result = research_agent.invoke(state_with_instruction)
     # Update workflow stage to indicate we're waiting for user to choose locations
     result["workflow_stage"] = "choose_locations"
     return result
@@ -131,7 +154,40 @@ Focus on building the entire trip around the user's chosen destination!
 
 def itinerary_node(state: TravelState) -> dict:
     """Entry point for the Itinerary Agent."""
-    result = itinerary_agent.invoke(state)
+    # Get the selected location from state
+    selected_places = state.get("selected_places", [])
+    researched_places = state.get("researched_places", [])
+    remaining_budget = state.get("remaining_budget", 0)
+    
+    # Get details of the chosen location
+    if selected_places and len(selected_places) > 0:
+        chosen_place_id = selected_places[0]  # Should be only ONE location at this stage
+        chosen_place = next((p for p in researched_places if p.get("id") == chosen_place_id), None)
+        
+        if chosen_place:
+            itinerary_instruction = (
+                f"I have selected {chosen_place.get('name', 'this location')} for my trip. "
+                f"My remaining budget is ${remaining_budget:.2f}. "
+                f"Please create a detailed day-by-day itinerary for this location, including accommodation, "
+                f"activities, and transportation. Make sure to stay within my budget!"
+            )
+        else:
+            itinerary_instruction = (
+                f"I have selected a location (ID: {chosen_place_id}) for my trip. "
+                f"My remaining budget is ${remaining_budget:.2f}. "
+                f"Please create a detailed itinerary within my budget."
+            )
+    else:
+        itinerary_instruction = (
+            f"Please create a detailed itinerary for the selected location. "
+            f"My remaining budget is ${remaining_budget:.2f}."
+        )
+    
+    # Add explicit instruction as a human message
+    state_with_instruction = dict(state)
+    state_with_instruction["messages"] = state["messages"] + [HumanMessage(content=itinerary_instruction)]
+    
+    result = itinerary_agent.invoke(state_with_instruction)
     
     # Recalculate remaining budget to avoid concurrency issues in tools
     # We use the itinerary from the result (which includes new bookings)
