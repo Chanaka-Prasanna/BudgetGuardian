@@ -43,8 +43,9 @@ workflow.add_conditional_edges(
 # 5. Compile with Interrupts for Human-in-the-Loop
 # Interrupt AFTER Search (so user can select places)
 # Interrupt AFTER Research (so user can choose which locations to include in itinerary)
+# Interrupt AFTER Itinerary (so user can review and request adjustments)
 checkpointer = MemorySaver()
 app = workflow.compile(
     checkpointer=checkpointer,
-    interrupt_after=["Search_Agent", "Research_Agent"]  # Changed to interrupt_after
+    interrupt_after=["Search_Agent", "Research_Agent", "Itinerary_Agent"]
 )

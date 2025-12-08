@@ -128,7 +128,8 @@ export function useTripStream() {
 
   const resumeStream = async (
     selectedPlaces: string[],
-    action: string = "research"
+    action: string = "research",
+    message: string = ""
   ) => {
     if (!state.threadId) return;
 
@@ -143,6 +144,7 @@ export function useTripStream() {
           thread_id: state.threadId,
           selected_places: selectedPlaces,
           action: action,
+          message: message,
         }),
         signal: abortControllerRef.current.signal,
       });

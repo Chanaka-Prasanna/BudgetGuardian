@@ -113,6 +113,21 @@ export default function Dashboard() {
     setSelectedPlaceInput("");
   };
 
+  const handleAdjustItinerary = () => {
+    if (!selectedPlaceInput.trim()) {
+      alert("Please describe what adjustments you'd like to make");
+      return;
+    }
+
+    resumeStream([], "adjust_itinerary", selectedPlaceInput);
+    setSelectedPlaceInput("");
+  };
+
+  const handleFinalizeItinerary = () => {
+    resumeStream([], "finalize_itinerary", "Looks perfect!");
+    setSelectedPlaceInput("");
+  };
+
   return (
     <div className="h-screen bg-gray-50 flex flex-col font-sans overflow-hidden">
       {/* HEADER */}
@@ -327,6 +342,47 @@ export default function Dashboard() {
                 </button>
               </div>
             )}
+
+          {workflowStage === "review_itinerary" && isPaused && (
+            <div className="absolute bottom-0 left-0 right-0 p-3 bg-purple-50 border-t border-purple-100 space-y-2 shadow-lg max-h-80 overflow-y-auto">
+              <div className="text-sm text-purple-900 font-medium">
+                ✅ Initial itinerary created! Review and adjust if needed
+              </div>
+
+              <div className="text-xs text-purple-700">
+                Request adjustments (e.g., "Add more activities", "Change hotel
+                to budget option", "Extend to 3 days"):
+              </div>
+              <textarea
+                value={selectedPlaceInput}
+                onChange={(e) => setSelectedPlaceInput(e.target.value)}
+                className="w-full p-2 border border-purple-200 rounded-lg bg-white text-gray-900 text-sm placeholder:text-gray-400 resize-none"
+                placeholder="Describe changes you'd like..."
+                rows={3}
+                onKeyPress={(e) =>
+                  e.key === "Enter" &&
+                  !e.shiftKey &&
+                  handleAdjustItinerary()
+                }
+              />
+              <div className="flex gap-2">
+                <button
+                  className="flex-1 bg-purple-600 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-sm hover:bg-purple-700 transition-colors disabled:opacity-50"
+                  onClick={handleAdjustItinerary}
+                  disabled={isLoading || !selectedPlaceInput.trim()}
+                >
+                  {isLoading ? "Adjusting..." : "Adjust Itinerary"}
+                </button>
+                <button
+                  className="flex-1 bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-sm hover:bg-green-700 transition-colors disabled:opacity-50"
+                  onClick={handleFinalizeItinerary}
+                  disabled={isLoading}
+                >
+                  {isLoading ? "Finalizing..." : "Looks Perfect! ✓"}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* RIGHT PANEL: Map View (60%) */}

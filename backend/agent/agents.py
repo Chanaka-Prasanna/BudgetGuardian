@@ -68,14 +68,26 @@ def search_node(state: TravelState) -> dict:
 research_agent = create_agent(
     llm,
     [research_place],
-    system_prompt="""You are a Travel Research Agent. Research selected locations and provide comprehensive summaries.
+    system_prompt="""You are a Travel Research Agent. Conduct thorough research and provide COMPREHENSIVE, DETAILED information.
 
 Task:
-1. Call research_place for each place ID provided
-2. Present findings with key highlights, weather, and notable features
-3. Ask user to select ONE location for their itinerary
+1. Call research_place for EACH place ID provided
+2. For each location, present DETAILED information including:
+   - Full description and overview
+   - Historical background and significance
+   - Weather conditions and best time to visit
+   - Popular attractions and activities nearby
+   - Cultural aspects and local customs
+   - Transportation options
+   - Estimated costs and budget considerations
+   - Pros and cons
+   - Traveler tips and recommendations
+   - Any unique features or special notes
 
-Be concise and provide ONE complete summary after researching all locations.
+3. After researching ALL locations, provide a DETAILED comparison
+4. Ask user to select ONE location for their itinerary
+
+IMPORTANT: Provide COMPREHENSIVE details, not just brief summaries. Users want to see extensive research results to make informed decisions.
 """
 )
 
@@ -97,7 +109,9 @@ def research_node(state: TravelState) -> dict:
         f"I have selected {len(selected_places)} places for you to research. "
         f"Here are the place IDs you need to research:\n"
         + "\n".join(place_details) +
-        "\n\nPlease call the research_place tool for EACH of these place IDs and provide a comprehensive summary."
+        "\n\nPlease call the research_place tool for EACH of these place IDs and provide COMPREHENSIVE, DETAILED research results. "
+        "I want to see extensive information about each location including history, weather, attractions, costs, pros/cons, and tips. "
+        "Don't just give brief summaries - provide thorough details so I can make an informed decision."
     )
     
     # Add this as a human message to explicitly tell the agent what to do
@@ -114,61 +128,78 @@ def research_node(state: TravelState) -> dict:
 itinerary_agent = create_agent(
     llm,
     [],  # No tools needed - just planning and recommendations
-    system_prompt="""You are the Itinerary Planning Agent. Create a detailed travel plan for the user's chosen location.
+    system_prompt="""You are the Itinerary Planning Agent. Create detailed travel plans based on user preferences.
 
-Process:
-1. Recommend accommodation options with estimated costs
-2. Suggest transportation options if needed
-3. Create a day-by-day itinerary with:
-   - Activities and attractions
-   - Meal suggestions
-   - Timing and duration
-   - Estimated costs for each item
-4. Provide a complete cost breakdown showing how to stay within budget
+Your Tasks:
+1. **Initial Itinerary**: Create a comprehensive day-by-day plan with accommodations, activities, dining, and costs
+2. **Adjustments**: When user requests changes, MODIFY the previous itinerary based on their feedback
+   - Read their adjustment request carefully
+   - Make SPECIFIC changes they asked for
+   - Keep parts they didn't mention changing
+   - Explain what you changed
 
-Give ONE comprehensive response with all recommendations and cost estimates.
+Important:
+- When adjusting, DO NOT just repeat the same itinerary
+- Actually implement the changes the user requested
+- If they say "add more activities" - ADD MORE, don't keep the same
+- If they say "change hotel to budget" - CHANGE IT to a budget option
+- If they say "extend to 3 days" - ADD another day
+
+Always include cost estimates and stay within budget.
 """
 )
 
 def itinerary_node(state: TravelState) -> dict:
     """Entry point for the Itinerary Agent."""
-    # Get the selected location from state
-    selected_places = state.get("selected_places", [])
-    researched_places = state.get("researched_places", [])
-    remaining_budget = state.get("remaining_budget", 0)
+    # Check if this is an adjustment request by looking at the last message
+    messages = state.get("messages", [])
+    workflow_stage = state.get("workflow_stage", "")
     
-    # Get details of the chosen location
-    if selected_places and len(selected_places) > 0:
-        chosen_place_id = selected_places[0]  # Should be only ONE location at this stage
-        chosen_place = next((p for p in researched_places if p.get("id") == chosen_place_id), None)
+    # If workflow_stage is already review_itinerary, this is an adjustment request
+    is_adjustment = workflow_stage == "review_itinerary"
+    
+    if is_adjustment:
+        # For adjustments, the user's message is already in the state
+        # Just invoke the agent directly - it will see the conversation history
+        result = itinerary_agent.invoke(state)
+    else:
+        # This is the initial itinerary creation
+        selected_places = state.get("selected_places", [])
+        researched_places = state.get("researched_places", [])
+        remaining_budget = state.get("remaining_budget", 0)
         
-        if chosen_place:
-            itinerary_instruction = (
-                f"I have selected {chosen_place.get('name', 'this location')} for my trip. "
-                f"My budget is ${remaining_budget:.2f}. "
-                f"Please create a detailed day-by-day itinerary with recommendations for accommodation, "
-                f"activities, dining, and transportation. Include estimated costs for everything!"
-            )
+        # Get details of the chosen location
+        if selected_places and len(selected_places) > 0:
+            chosen_place_id = selected_places[0]  # Should be only ONE location at this stage
+            chosen_place = next((p for p in researched_places if p.get("id") == chosen_place_id), None)
+            
+            if chosen_place:
+                itinerary_instruction = (
+                    f"I have selected {chosen_place.get('name', 'this location')} for my trip. "
+                    f"My budget is ${remaining_budget:.2f}. "
+                    f"Please create a detailed day-by-day itinerary with recommendations for accommodation, "
+                    f"activities, dining, and transportation. Include estimated costs for everything!"
+                )
+            else:
+                itinerary_instruction = (
+                    f"I have selected a location (ID: {chosen_place_id}) for my trip. "
+                    f"My budget is ${remaining_budget:.2f}. "
+                    f"Please create a detailed itinerary with cost estimates."
+                )
         else:
             itinerary_instruction = (
-                f"I have selected a location (ID: {chosen_place_id}) for my trip. "
-                f"My budget is ${remaining_budget:.2f}. "
-                f"Please create a detailed itinerary with cost estimates."
+                f"Please create a detailed itinerary for the selected location. "
+                f"My budget is ${remaining_budget:.2f}."
             )
-    else:
-        itinerary_instruction = (
-            f"Please create a detailed itinerary for the selected location. "
-            f"My budget is ${remaining_budget:.2f}."
-        )
+        
+        # Add explicit instruction as a human message
+        state_with_instruction = dict(state)
+        state_with_instruction["messages"] = state["messages"] + [HumanMessage(content=itinerary_instruction)]
+        
+        result = itinerary_agent.invoke(state_with_instruction)
     
-    # Add explicit instruction as a human message
-    state_with_instruction = dict(state)
-    state_with_instruction["messages"] = state["messages"] + [HumanMessage(content=itinerary_instruction)]
-    
-    result = itinerary_agent.invoke(state_with_instruction)
-    
-    # Mark workflow as complete
-    result["workflow_stage"] = "complete"
+    # Mark workflow stage as review_itinerary so user can provide feedback
+    result["workflow_stage"] = "review_itinerary"
     return result
 
 
@@ -192,15 +223,22 @@ system_prompt = (
     "   → User must select EXACTLY ONE location for the itinerary"
     "   → If user confirmed ONE location, route to Itinerary_Agent"
     "   → If no selection yet, tell user to review research and select ONE location"
-    "\n\n5. ITINERARY: Create final travel plan for ONE location"
+    "\n\n5. INITIAL ITINERARY: Create initial travel plan for ONE location"
     "   → Route to Itinerary_Agent to build detailed itinerary around the chosen location"
-    "\n\n6. COMPLETE: Itinerary created"
+    "\n\n6. REVIEW: Initial itinerary created, waiting for user feedback"
+    "   → Check workflow_stage='review_itinerary'"
+    "   → If user provided adjustment requests, route to Itinerary_Agent to refine"
+    "   → If user confirmed (no changes needed), respond with FINISH"
+    "\n\n7. COMPLETE: Final itinerary approved"
+    "   → Check workflow_stage='complete'"
     "   → Respond with FINISH"
     "\n\n"
     "DECISION RULES:"
     "\n- If workflow_stage is empty or 'init' or 'search' → Search_Agent" 
     "\n- If workflow_stage='select_locations' AND selected_places exist → Research_Agent"
     "\n- If workflow_stage='choose_locations' AND selected_places has ONE item → Itinerary_Agent"
+    "\n- If workflow_stage='review_itinerary' AND user provided feedback → Itinerary_Agent"
+    "\n- If workflow_stage='review_itinerary' AND user confirmed → FINISH"
     "\n- If workflow_stage='complete' → FINISH"
     "\n- If user asks to start over → Search_Agent"
 )

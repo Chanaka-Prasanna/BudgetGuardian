@@ -38,7 +38,7 @@ class ResumeRequest(BaseModel):
     thread_id: str
     selected_places: Optional[List[str]] = None
     message: str = ""
-    action: str = "research"  # "research" or "plan_itinerary"
+    action: str = "research"  # "research", "plan_itinerary", "adjust_itinerary", or "finalize_itinerary"
 
 async def event_generator(input_data: dict | None, thread_id: str) -> AsyncGenerator[str, None]:
     """
@@ -133,8 +133,8 @@ async def event_generator(input_data: dict | None, thread_id: str) -> AsyncGener
         state_snapshot = agent_graph.get_state(config)
         current_stage = state_snapshot.values.get("workflow_stage", "")
         
-        # If workflow_stage is select_locations or choose_locations, we're paused
-        if current_stage in ["select_locations", "choose_locations"]:
+        # If workflow_stage is select_locations, choose_locations, or review_itinerary, we're paused
+        if current_stage in ["select_locations", "choose_locations", "review_itinerary"]:
             yield f"data: {json.dumps({'type': 'status', 'data': 'paused', 'stage': current_stage})}\n\n"
         elif state_snapshot.next:
             # Graph is interrupted for some other reason
@@ -224,6 +224,24 @@ async def resume_trip(request: ResumeRequest):
         updates["selected_places"] = request.selected_places
         
         message = f"Great! Please create a detailed itinerary for my selected location. Remember to stay within my budget."
+        
+    elif request.action == "adjust_itinerary":
+        # User wants to adjust the itinerary
+        print(f"✏️ Adjusting itinerary based on feedback: {request.message}")
+        
+        # Keep workflow_stage as review_itinerary so supervisor routes to Itinerary_Agent
+        updates["workflow_stage"] = "review_itinerary"
+        
+        # Make the adjustment request very explicit
+        message = f"Please adjust the itinerary based on this feedback: {request.message}\n\nIMPORTANT: Make the specific changes I requested. Do not repeat the same itinerary."
+        
+    elif request.action == "finalize_itinerary":
+        # User approved the itinerary, finalize
+        print(f"✅ Finalizing itinerary")
+        
+        updates["workflow_stage"] = "complete"
+        
+        message = "The itinerary looks perfect! Thank you for the planning."
         
     else:
         # Generic resume
