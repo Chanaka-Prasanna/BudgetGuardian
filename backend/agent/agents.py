@@ -3,7 +3,7 @@ from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.prebuilt import create_react_agent
 
-from tools import search_places, book_hotel, search_flights, book_flight, research_place
+from tools import search_places, research_place
 from state import TravelState
 
 # 1. Setup LLM
@@ -24,7 +24,7 @@ def create_agent(llm, tools, system_prompt: str):
 # --- Search Agent ---
 search_agent = create_agent(
     llm, 
-    [search_places, search_flights], 
+    [search_places],  # Only search for places, no flight searches needed
     system_prompt="""You are a Travel Discovery Agent specializing in finding diverse locations.
 
 Your job is to discover ALL types of relevant places based on the user's destination and preferences.
@@ -68,19 +68,14 @@ def search_node(state: TravelState) -> dict:
 research_agent = create_agent(
     llm,
     [research_place],
-    system_prompt="""You are a Travel Research Agent conducting in-depth analysis of locations.
+    system_prompt="""You are a Travel Research Agent. Research selected locations and provide comprehensive summaries.
 
-Your task:
-1. The user has selected places to research - the place IDs are in state['selected_places']
-2. For each place ID, call research_place(place_id="<the_exact_id>") 
-3. Use the exact IDs from the list without modification
+Task:
+1. Call research_place for each place ID provided
+2. Present findings with key highlights, weather, and notable features
+3. Ask user to select ONE location for their itinerary
 
-After researching all locations:
-- Provide a comprehensive summary with key highlights, weather, costs, and pros/cons
-- Ask the user which ONE location they'd like to build their itinerary around
-- The user will select their primary destination for the trip
-
-Keep your communication friendly and helpful. Focus on presenting the research findings clearly.
+Be concise and provide ONE complete summary after researching all locations.
 """
 )
 
@@ -118,37 +113,20 @@ def research_node(state: TravelState) -> dict:
 # --- Itinerary Agent (Planner) ---
 itinerary_agent = create_agent(
     llm,
-    [book_hotel, book_flight],
-    system_prompt="""You are the Itinerary Planning Agent creating detailed travel plans.
+    [],  # No tools needed - just planning and recommendations
+    system_prompt="""You are the Itinerary Planning Agent. Create a detailed travel plan for the user's chosen location.
 
-Your job is to create a complete day-by-day itinerary for the user's chosen location.
-
-Planning Process:
-1. The user has selected ONE location - review the research data for that place
-2. Check the budget - you must stay within the remaining funds
-3. Create a detailed itinerary including:
-   - Day-by-day schedule
-   - Accommodation bookings (use book_hotel)
-   - Transportation (use book_flight if needed)
-   - Best times to visit
-   - Duration recommendations
-   - Nearby activities
+Process:
+1. Recommend accommodation options with estimated costs
+2. Suggest transportation options if needed
+3. Create a day-by-day itinerary with:
+   - Activities and attractions
    - Meal suggestions
-   - Total cost breakdown
+   - Timing and duration
+   - Estimated costs for each item
+4. Provide a complete cost breakdown showing how to stay within budget
 
-Budget Management:
-- Check remaining budget before each booking
-- If budget is tight, suggest budget-friendly options
-- Keep a 10% buffer for unexpected costs
-
-Final Summary:
-- Complete itinerary for the chosen location
-- All confirmed bookings
-- Itemized costs
-- Remaining budget
-- Travel tips for the location
-
-Focus on building the entire trip around the user's chosen destination!
+Give ONE comprehensive response with all recommendations and cost estimates.
 """
 )
 
@@ -167,20 +145,20 @@ def itinerary_node(state: TravelState) -> dict:
         if chosen_place:
             itinerary_instruction = (
                 f"I have selected {chosen_place.get('name', 'this location')} for my trip. "
-                f"My remaining budget is ${remaining_budget:.2f}. "
-                f"Please create a detailed day-by-day itinerary for this location, including accommodation, "
-                f"activities, and transportation. Make sure to stay within my budget!"
+                f"My budget is ${remaining_budget:.2f}. "
+                f"Please create a detailed day-by-day itinerary with recommendations for accommodation, "
+                f"activities, dining, and transportation. Include estimated costs for everything!"
             )
         else:
             itinerary_instruction = (
                 f"I have selected a location (ID: {chosen_place_id}) for my trip. "
-                f"My remaining budget is ${remaining_budget:.2f}. "
-                f"Please create a detailed itinerary within my budget."
+                f"My budget is ${remaining_budget:.2f}. "
+                f"Please create a detailed itinerary with cost estimates."
             )
     else:
         itinerary_instruction = (
             f"Please create a detailed itinerary for the selected location. "
-            f"My remaining budget is ${remaining_budget:.2f}."
+            f"My budget is ${remaining_budget:.2f}."
         )
     
     # Add explicit instruction as a human message
@@ -189,17 +167,7 @@ def itinerary_node(state: TravelState) -> dict:
     
     result = itinerary_agent.invoke(state_with_instruction)
     
-    # Recalculate remaining budget to avoid concurrency issues in tools
-    # We use the itinerary from the result (which includes new bookings)
-    itinerary = result.get("itinerary", [])
-    total_budget = state.get("total_budget", 0)
-    
-    start_budget = float(total_budget)
-    used_budget = sum(float(item.get("cost", 0)) for item in itinerary)
-    remaining = start_budget - used_budget
-    
-    # Update explicitly
-    result["remaining_budget"] = remaining
+    # Mark workflow as complete
     result["workflow_stage"] = "complete"
     return result
 

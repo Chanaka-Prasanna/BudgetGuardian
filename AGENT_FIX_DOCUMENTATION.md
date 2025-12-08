@@ -38,6 +38,47 @@ Now when users provide place numbers:
 4. Research_Agent receives explicit instruction message with place IDs
 5. Agent proceeds with research immediately instead of asking again
 
+## Additional Fix: Duplicate Messages
+
+### Problem
+Users were seeing multiple responses from agents, including:
+- Intermediate reasoning steps
+- Tool call messages ("I'll book a hotel...")
+- Tool response messages ("Successfully booked...")
+- Final summary messages
+
+### Solution
+Updated `event_generator()` in `server.py` to filter messages:
+1. **Skip tool messages** - Don't show internal tool calls and responses
+2. **Skip AI messages with tool_calls** - Filter out intermediate reasoning where agent is calling tools
+3. **Skip empty AI messages** - Ignore very short or empty messages
+4. **Only show meaningful messages** - Human messages and final AI responses
+
+```python
+# Skip AI messages that are tool calls
+if msg.type == "ai" and hasattr(msg, 'tool_calls') and msg.tool_calls:
+    continue
+```
+
+### Agent Prompt Optimization
+Also simplified system prompts for Research and Itinerary agents to encourage single, comprehensive responses instead of multiple thinking-out-loud messages.
+
+## Additional Update: Removed Booking Functionality
+
+### Changes
+Removed hotel and flight booking features to focus on planning and recommendations:
+
+**Search Agent:**
+- ✅ Removed `search_flights` tool
+- ✅ Now only uses `search_places` for location discovery
+
+**Itinerary Agent:**
+- ✅ Removed `book_hotel` and `book_flight` tools
+- ✅ Updated to provide recommendations with cost estimates instead of bookings
+- ✅ Simplified budget tracking (no deductions since no actual bookings)
+
+**Result:** The agent now creates travel plans with recommendations and cost estimates rather than making actual bookings.
+
 ## Testing
 Restart the backend server for changes to take effect:
 ```bash
@@ -50,4 +91,6 @@ Then test the flow:
 2. Wait for search results
 3. Enter place numbers (e.g., "1, 3, 5")
 4. Agent should now proceed directly with research instead of asking again
+5. You should see ONE consolidated response per agent instead of multiple intermediate messages
+6. Final itinerary will show recommendations with cost estimates (no bookings)
 

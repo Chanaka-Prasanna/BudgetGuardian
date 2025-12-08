@@ -66,15 +66,26 @@ async def event_generator(input_data: dict | None, thread_id: str) -> AsyncGener
                 if current_message_count > seen_message_count:
                     for i in range(seen_message_count, current_message_count):
                         msg = event["messages"][i]
-                        payload = {
-                            "type": "message",
-                            "data": {
-                                "role": msg.type,
-                                "content": str(msg.content)
+                        
+                        # Filter messages: only show human and AI messages, skip tool calls and tool responses
+                        if msg.type in ["human", "ai"]:
+                            # Skip AI messages that are tool calls (have tool_calls attribute and it's not empty)
+                            if msg.type == "ai" and hasattr(msg, 'tool_calls') and msg.tool_calls:
+                                continue
+                            
+                            # Skip empty or very short AI messages that are just intermediate reasoning
+                            if msg.type == "ai" and (not msg.content or len(str(msg.content).strip()) < 10):
+                                continue
+                                
+                            payload = {
+                                "type": "message",
+                                "data": {
+                                    "role": msg.type,
+                                    "content": str(msg.content)
+                                }
                             }
-                        }
-                        yield f"data: {json.dumps(payload)}\n\n"
-                        await asyncio.sleep(0.01)
+                            yield f"data: {json.dumps(payload)}\n\n"
+                            await asyncio.sleep(0.01)
                     
                     seen_message_count = current_message_count
             
